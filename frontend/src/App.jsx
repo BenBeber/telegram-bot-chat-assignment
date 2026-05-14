@@ -1,24 +1,22 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import "./index.css";
+import ChatMessage from "./components/ChatMessage";
+import { WsStatus } from "./types";
+import { useChatSocket } from "./services/useChatSocket";
+
+const WS_URL = "ws://localhost:8000/ws";
 
 function App() {
-  const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
+  const { status, messages, send } = useChatSocket(WS_URL);
+  const bottomRef = useRef(null);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages.length]);
 
   const sendMessage = () => {
-    if (!input.trim()) return;
-
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: crypto.randomUUID(),
-        text: input,
-        timestamp: new Date().toISOString(),
-        direction: "outgoing",
-      },
-    ]);
-
-    setInput("");
+    if (send(input)) setInput("");
   };
 
   return (
@@ -26,22 +24,14 @@ function App() {
       <div className="chat-container">
         <header className="chat-header">
           <h2>Telegram Chat</h2>
+          <span className={`status-badge status-${status}`}>{status}</span>
         </header>
 
         <div className="chat-messages">
           {messages.map((msg) => (
-            <div
-              key={msg.id}
-              className={`chat-message outgoing`}
-            >
-              <div className="chat-bubble">
-                <div className="chat-text">{msg.text}</div>
-                <div className="chat-timestamp">
-                  {new Date(msg.timestamp).toLocaleTimeString()}
-                </div>
-              </div>
-            </div>
+            <ChatMessage key={msg.id} message={msg} />
           ))}
+          <div ref={bottomRef} />
         </div>
 
         <div className="chat-input">
@@ -50,8 +40,11 @@ function App() {
             onChange={(e) => setInput(e.target.value)}
             placeholder="Type a message..."
             onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+            disabled={status !== WsStatus.OPEN}
           />
-          <button onClick={sendMessage}>Send</button>
+          <button onClick={sendMessage} disabled={status !== WsStatus.OPEN}>
+            Send
+          </button>
         </div>
       </div>
     </div>
