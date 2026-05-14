@@ -1,0 +1,7 @@
+fastapi==0.136.1
+python-dotenv==1.2.2
+httpx==0.28.1
+pydantic==2.13.4
+python-telegram-bot==22.7
+uvicorn[standard]==0.46.0
+websockets==16.0
