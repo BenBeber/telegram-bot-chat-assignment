@@ -1,0 +1,23 @@
+services:
+  backend:
+    build: ./backend
+    container_name: telegram-chat-backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+      - /app/venv
+      - /app/.venv
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    container_name: telegram-chat-frontend
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+    restart: unless-stopped
