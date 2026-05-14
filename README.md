@@ -1,81 +1,100 @@
-# Senior Full-Stack Developer – Home Assignment
+# Telegram Bot Chat Assignment
 
 ## Overview
 
-This assignment simulates a simplified real-world system that displays a web-based interface of a chat between a Telegram bot and a remote participant.
+A Telegram bot chat interface assignment — a web app that displays real-time bidirectional messaging between a Telegram bot and a remote participant. The frontend is now wired to the backend over WebSocket, with reconnect, failed-message attribution, auto-scroll, and an extracted transport hook.
 
-The system should consist:
-- A **React.js frontend** that displays a chat UI
-- A **FastAPI (Python) backend** that manages a Telegram bot
-- A single Telegram chat connection that acts as the remote participant
+## Tech Stack
 
-The focus of this assignment is on **architecture, clarity, and engineering judgment**, not visual polish or feature overload.
+### Frontend
+- React.js
+- Vite
+- Native WebSocket API
 
----
-
-## Functional Requirements
-
-### 1. Chat UI
-
-The frontend must display a chat interface between the bot and the remote Telegram participant. 
-It should include:
-
-- A list of messages (incoming and outgoing)
-- A text input for sending messages
-- A send button (or Enter key support)
-
-Each message must include:
-- Message text
-- Timestamp (time the message was sent)
-
-The chat may not be consistent and may only present messages from the current session.
-
-Incoming and outgoing messages should be visually distinguishable.
+### Backend
+- FastAPI
+- python-telegram-bot
+- Uvicorn.
 
 ---
 
-### 2. Telegram Bot Integration (Backend)
+## Architecture
 
-- The backend must manage a **Telegram bot instance**
-- The bot must accept **only one active Telegram chat connection** (Should only accept interacting with one remote participant)
-- Messages flow as follows:
-  - Messages sent from the frontend are forwarded to the connected Telegram chat
-  - Messages received by the Telegram bot are forwarded to the frontend as incoming messages
+```
+frontend/src/App.jsx  ←──(WebSocket /ws)──→  backend/app/main.py
+        ↓                                              ↓
+  React chat UI                          FastAPI + python-telegram-bot
+  useChatSocket hook                       Telegram Bot API (polling)
+```
 
-State management, concurrency handling, and message ordering should be handled safely.
+## Backend Modules
+
+| File | Purpose |
+|---|---|
+| `app/main.py` | FastAPI app, lifespan (bot startup/shutdown), `GET /health`, `WS /ws` endpoint, logging config |
+| `app/config.py` | `API_TOKEN` — loaded from `TELEGRAM_BOT_TOKEN` env var via `python-dotenv` (`load_dotenv()` reads `backend/.env`) |
+| `app/models.py` | `ChatMessage` Pydantic model (`id`, `text`, `timestamp`, `sender: Literal["user","telegram"]`). **Currently unused** — defined but not imported anywhere; broadcast/send paths use raw dicts. Safe to remove or wire up. |
+| `app/state.py` | `active_chat_id: Optional[int]` — the single permitted Telegram chat |
+| `app/telegram_service.py` | Telegram message handler, `send_to_telegram()`, concurrency locks |
+| `app/websocket_manager.py` | `WebSocketManager` — connect/disconnect/broadcast to all frontend clients |
+
+The backend exposes:
+- `GET /health` → `{"status": "ok"}`
+- `WS /ws` — bidirectional chat between frontend and the active Telegram participant
+
+## Frontend Modules
+
+| File | Purpose |
+|---|---|
+| `src/App.jsx` | Top-level view: header, status badge, message list, input. Pure view; transport lives in the hook. |
+| `src/services/useChatSocket.js` | WebSocket lifecycle hook: connect/reconnect, message state, send. Returns `{ status, messages, send }`. Maintains a FIFO `pendingRef` of recent outgoing message IDs (TTL 5s) to attribute backend `error` payloads to the originating outgoing bubble. |
+| `src/components/ChatMessage.jsx` | Renders a single message bubble (incoming/outgoing/error/failed). |
+| `src/types.js` | `WsStatus` (`connecting`/`open`/`closed`) and `Direction` (`incoming`/`outgoing`/`error`) frozen enums. |
+| `src/index.css` | All styles. Failed outgoing bubbles use `.chat-bubble.failed` (red) plus `.chat-failure` for the inline error text. |
+
+Auto-scroll: `App.jsx` keeps a `bottomRef` after the message list and calls `scrollIntoView` in a `useEffect` keyed on `messages.length`.
+
+Reconnect: `useChatSocket` schedules `setTimeout(connect, 3000)` from `onclose` unless the effect is cancelled. No backoff, no retry cap — known limitation.
+
+
+## Concurrency
+
+Two `asyncio.Lock` instances in `telegram_service.py` guard against race conditions:
+- `_chat_registration_lock` — atomically checks and sets `active_chat_id`; prevents two simultaneous Telegram messages from registering different chats
+- `_send_lock` — serializes outbound `bot.send_message()` calls; preserves message delivery order under concurrent frontend sends
 
 ---
 
 ### 3. Backend Configuration State
 
-- The Telegram bot token should be configured manualy in the backend.
+**Bot token.** `backend/app/config.py` reads `TELEGRAM_BOT_TOKEN` from the environment via `python-dotenv`. Create `backend/.env` with `TELEGRAM_BOT_TOKEN=<your-token>` before running either Docker or local dev — `load_dotenv()` picks it up from the working directory, which is `backend/` locally and `/app/` (the bind-mounted `./backend`) in the container. Compose does not pass the token through `environment:` / `env_file:`, so the `.env` file is required.
+
+
+```.env
+TELEGRAM_BOT_TOKEN=your_token_here
+```
 
 ---
 
 ## Communication Between Frontend and Backend
 
-- The communication mechanism is up to you  
-  (e.g. WebSockets, long polling, Server-Sent Events, etc.)
-- The chosen approach should be justified by simplicity and correctness
-- Real-time or near-real-time behavior is expected
+The communication between the frontend and backend is implemented using WebSockets.
+- Real-Time Bidirectional Communication
+- low latency
+- persistent connection
+- lower overhead than polling
 
----
+## Communication Between Telgram and Backend
+The Telegram bot integration uses long polling instead of webhooks.
+- simpler development setup
+- Polling works locally
+- reliable enough for this scope
 
-## Technical Requirements
+### Tradeoffs
+- slightly higher latency
+- less efficient than webhooks
 
-- **Frontend:** React.js
-- **Backend:** FastAPI (Python)
-- Code should be clean, readable, and maintainable
-- Assumptions and trade-offs should be documented
-
----
-
-## Prerequisites
-
-- Node.js (18+ recommended)
-- Python 3.10+
-- Telegram account
-- Telegram Bot Token (created via BotFather)
+ In a production-scale system, I would likely switch to webhooks for better scalability and lower latency.
 
 ---
 
@@ -100,10 +119,11 @@ npm install
 npm run dev
 ```
 
-### Docker Setup (Optional but Recommended)
+### Docker Setup
 
 For a streamlined setup, you can run the entire system using Docker Compose. This ensures all dependencies and environment configurations are handled automatically.
 
-1. **Build and start the containers:**
+ **Build and start the containers:**
    ```bash
    docker-compose up --build
+
