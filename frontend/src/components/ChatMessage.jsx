@@ -1,8 +1,8 @@
-import { Direction } from "../types";
+import { Direction, MessageStatus } from "../types";
 
 function ChatMessage({ message }) {
   const { direction, username, text, timestamp, error } = message;
-  const failed = message.status === "failed";
+  const failed = message.status === MessageStatus.FAILED;
 
   return (
     <div className={`chat-message ${direction}`}>
