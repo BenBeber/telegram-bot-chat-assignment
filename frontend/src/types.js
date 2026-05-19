@@ -9,3 +9,19 @@ export const Direction = Object.freeze({
   OUTGOING: "outgoing",
   ERROR: "error",
 });
+
+export const MessageStatus = Object.freeze({
+  SENT: "sent",
+  FAILED: "failed",
+});
+
+/**
+ * @typedef {Object} ChatMessage
+ * @property {string} id
+ * @property {string} text
+ * @property {"incoming"|"outgoing"|"error"} direction
+ * @property {string|null} username
+ * @property {string} timestamp           ISO-8601
+ * @property {"sent"|"failed"} [status]
+ * @property {string} [error]
+ */
